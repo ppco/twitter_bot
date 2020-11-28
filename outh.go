@@ -31,12 +31,12 @@ func manualOauthSettings(creds *creds, additionalParam map[string]string, httpMe
 	baseQueryString := sortedQueryString(mapMerge(m, additionalParam))
 
 	base := []string{}
-	base = append(base, url.QueryEscape(baseQueryString))
 	if httpMethod != "" && uri != "" {
 		//media/uploadは使わない
 		base = append(base, url.QueryEscape(httpMethod))
 		base = append(base, url.QueryEscape(uri))
 	}
+	base = append(base, url.QueryEscape(baseQueryString))
 
 	signatureBase := strings.Join(base, "&")
 
