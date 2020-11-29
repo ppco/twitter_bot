@@ -9,7 +9,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -86,7 +85,6 @@ func tweetWithImage(creds *creds, fileStr, message string) (*http.Response, erro
 
 }
 
-//TODO :チャンク式は一旦コメントアウト
 func tweetWithMedia(creds *creds, fileStr string) (*http.Response, error) {
 	file, err := os.Open(fileStr)
 	if err != nil {
@@ -99,7 +97,7 @@ func tweetWithMedia(creds *creds, fileStr string) (*http.Response, error) {
 	//fileからcontentTypeを読み取る
 	buffer := make([]byte, 512)
 	file.Read(buffer)
-	//contentType := http.DetectContentType(buffer)
+	contentType := http.DetectContentType(buffer)
 	//読み取りポインタをリセットする
 	file.Seek(0, 0)
 
@@ -108,20 +106,21 @@ func tweetWithMedia(creds *creds, fileStr string) (*http.Response, error) {
 		return nil, err
 	}
 
-	authHeader := manualOauthSettings(creds, map[string]string{}, "POST", UPLOADMEDIA)
+	additionalParam := map[string]string{
+		"command":     "INIT",
+		"media_type":  contentType,
+		"total_bytes": strconv.FormatInt(fileInfo.Size(), 10),
+	}
+
+	authHeader := manualOauthSettings(creds, additionalParam, "POST", UPLOADMEDIA)
 	req, err := http.NewRequest("POST", UPLOADMEDIA, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Set("Authorization", authHeader)
-	req.Header.Set("Content-Type", "multipart/form-data")
-	query := url.Values{}
-	query.Add("command", "INIT")
-	query.Add("total_bytes", strconv.FormatInt(fileInfo.Size(), 10))
-	query.Add("media_type", "image/png")
-	req.URL.RawQuery = "command=INIT&total_bytes=6962&media_type=image/png" //query.Encode()
 
+	req.URL.RawQuery = sortedQueryString(additionalParam)
 	client := http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -145,12 +144,7 @@ func tweet(creds *creds, message string, mediaIDs []string) (*http.Response, err
 	}
 
 	req.Header.Set("Authorization", authHeader)
-	query := url.Values{}
-	query.Add("status", message)
-	if len(mediaIDs) != 0 {
-		query.Add("media_ids", strings.Join(mediaIDs, ","))
-	}
-	req.URL.RawQuery = query.Encode()
+	req.URL.RawQuery = sortedQueryString(addtionalParam)
 
 	client := http.Client{}
 	resp, err := client.Do(req)
