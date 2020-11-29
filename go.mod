@@ -1,4 +1,4 @@
-module twitter_test
+module twitter_bot
 
 go 1.15
 
