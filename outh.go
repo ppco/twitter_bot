@@ -51,7 +51,8 @@ func manualOauthSettings(creds *creds, additionalParam map[string]string, httpMe
 		url.QueryEscape(m["oauth_signature_method"]),
 		url.QueryEscape(m["oauth_timestamp"]),
 		url.QueryEscape(m["oauth_token"]),
-		url.QueryEscape(m["oauth_version"]))
+		url.QueryEscape(m["oauth_version"]),
+	)
 
 	return authHeader
 }
