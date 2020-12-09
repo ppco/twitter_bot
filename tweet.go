@@ -94,6 +94,95 @@ func tweetWithMedia(creds *creds, fileStr string) (*http.Response, error) {
 		file.Close()
 	}()
 
+	initRes, err := mediaInit(creds, file)
+	if err != nil {
+		return nil, err
+	}
+	err = mediaAppend(creds, *initRes, file)
+	if err != nil {
+		return nil, err
+	}
+
+	return &http.Response{}, nil
+}
+
+func mediaAppend(creds *creds, initRes uploadMediaResponse, file *os.File) error {
+	chunked := make([]byte, 5000)
+	segmentIndex := 0
+	for {
+		//boundaryBody作成
+		var body bytes.Buffer
+		mpWriter := multipart.NewWriter(&body)
+
+		boundary := "END_OF_PART"
+		if err := mpWriter.SetBoundary(boundary); err != nil {
+			return err
+		}
+
+		{
+			//part作成(メディアデータ本体)
+			part := make(textproto.MIMEHeader)
+			part.Set("Content-Disposition", "form-data; name=\"media_data\";")
+			writer, err := mpWriter.CreatePart(part)
+			if err != nil {
+				return err
+			}
+			//指定バイト数だけチャンク
+			n, err := file.Read(chunked)
+			if n == 0 {
+				break
+			}
+			if err != nil {
+				return err
+			}
+
+			b64Buf := base64.StdEncoding.EncodeToString(chunked)
+			writer.Write([]byte(b64Buf))
+		}
+
+		{
+			//その他パラメータの作成
+			part := make(textproto.MIMEHeader)
+			additionalParam := map[string]string{
+				"command":       "APPEND",
+				"media_id":      initRes.MediaIDString,
+				"segment_index": strconv.Itoa(segmentIndex),
+			}
+			for k, v := range additionalParam {
+				part.Set("Content-Disposition", fmt.Sprintf("form-data; name=\"%s\";", k))
+				writer, err := mpWriter.CreatePart(part)
+				if err != nil {
+					return err
+				}
+				writer.Write([]byte(v))
+			}
+		}
+
+		mpWriter.Close()
+
+		authHeader := manualOauthSettings(creds, map[string]string{}, "POST", UPLOADMEDIA)
+
+		req, err := http.NewRequest("POST", UPLOADMEDIA, bytes.NewReader(body.Bytes()))
+		if err != nil {
+			return err
+		}
+
+		req.Header.Set("Authorization", authHeader)
+		req.Header.Set("Content-Type", fmt.Sprintf("multipart/form-data; boundary=%s", boundary))
+
+		client := http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+
+		defer resp.Body.Close()
+		segmentIndex++
+	}
+	return nil
+}
+
+func mediaInit(creds *creds, file *os.File) (*uploadMediaResponse, error) {
 	//fileからcontentTypeを読み取る
 	buffer := make([]byte, 512)
 	file.Read(buffer)
@@ -128,7 +217,12 @@ func tweetWithMedia(creds *creds, fileStr string) (*http.Response, error) {
 	}
 	defer resp.Body.Close()
 
-	return resp, nil
+	var res uploadMediaResponse
+	err = json.NewDecoder(resp.Body).Decode(&res)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
 }
 
 func tweet(creds *creds, message string, mediaIDs []string) (*http.Response, error) {
