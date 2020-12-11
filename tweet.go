@@ -98,17 +98,87 @@ func tweetWithMedia(creds *creds, fileStr string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = mediaAppend(creds, *initRes, file)
+
+	res, err := mediaAppend(creds, *initRes, file)
 	if err != nil {
 		return nil, err
 	}
 
-	return &http.Response{}, nil
+	// res, err = mediaStatus(creds, *initRes)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	res, err = mediaFinalize(creds, *initRes)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err = tweet(creds, "wa-i", []string{initRes.MediaIDString})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
-func mediaAppend(creds *creds, initRes uploadMediaResponse, file *os.File) error {
-	chunked := make([]byte, 5000)
+func mediaStatus(creds *creds, initRes uploadMediaResponse) (*http.Response, error) {
+	param := map[string]string{
+		"command":  "STATUS",
+		"media_id": initRes.MediaIDString,
+	}
+
+	authHeader := manualOauthSettings(creds, param, "GET", UPLOADMEDIA)
+
+	req, err := http.NewRequest("GET", UPLOADMEDIA, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", authHeader)
+	req.URL.RawQuery = sortedQueryString(param)
+
+	client := http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := ioutil.ReadAll(resp.Body)
+	fmt.Println(string(b))
+	return resp, nil
+}
+
+func mediaFinalize(creds *creds, initRes uploadMediaResponse) (*http.Response, error) {
+	param := map[string]string{
+		"command":  "FINALIZE",
+		"media_id": initRes.MediaIDString,
+	}
+
+	authHeader := manualOauthSettings(creds, param, "POST", UPLOADMEDIA)
+
+	req, err := http.NewRequest("POST", UPLOADMEDIA, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", authHeader)
+	req.URL.RawQuery = sortedQueryString(param)
+
+	client := http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := ioutil.ReadAll(resp.Body)
+	fmt.Println(string(b))
+	return resp, nil
+}
+
+func mediaAppend(creds *creds, initRes uploadMediaResponse, file *os.File) (*http.Response, error) {
+	chunked := make([]byte, 3523218)
 	segmentIndex := 0
+	var res *http.Response
 	for {
 		//boundaryBody作成
 		var body bytes.Buffer
@@ -116,7 +186,7 @@ func mediaAppend(creds *creds, initRes uploadMediaResponse, file *os.File) error
 
 		boundary := "END_OF_PART"
 		if err := mpWriter.SetBoundary(boundary); err != nil {
-			return err
+			return nil, err
 		}
 
 		{
@@ -125,7 +195,7 @@ func mediaAppend(creds *creds, initRes uploadMediaResponse, file *os.File) error
 			part.Set("Content-Disposition", "form-data; name=\"media_data\";")
 			writer, err := mpWriter.CreatePart(part)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			//指定バイト数だけチャンク
 			n, err := file.Read(chunked)
@@ -133,7 +203,7 @@ func mediaAppend(creds *creds, initRes uploadMediaResponse, file *os.File) error
 				break
 			}
 			if err != nil {
-				return err
+				return nil, err
 			}
 
 			b64Buf := base64.StdEncoding.EncodeToString(chunked)
@@ -152,7 +222,7 @@ func mediaAppend(creds *creds, initRes uploadMediaResponse, file *os.File) error
 				part.Set("Content-Disposition", fmt.Sprintf("form-data; name=\"%s\";", k))
 				writer, err := mpWriter.CreatePart(part)
 				if err != nil {
-					return err
+					return nil, err
 				}
 				writer.Write([]byte(v))
 			}
@@ -164,22 +234,22 @@ func mediaAppend(creds *creds, initRes uploadMediaResponse, file *os.File) error
 
 		req, err := http.NewRequest("POST", UPLOADMEDIA, bytes.NewReader(body.Bytes()))
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		req.Header.Set("Authorization", authHeader)
 		req.Header.Set("Content-Type", fmt.Sprintf("multipart/form-data; boundary=%s", boundary))
 
 		client := http.Client{}
-		resp, err := client.Do(req)
+		res, err := client.Do(req)
 		if err != nil {
-			return err
+			return res, err
 		}
 
-		defer resp.Body.Close()
+		defer res.Body.Close()
 		segmentIndex++
 	}
-	return nil
+	return res, nil
 }
 
 func mediaInit(creds *creds, file *os.File) (*uploadMediaResponse, error) {
@@ -194,7 +264,7 @@ func mediaInit(creds *creds, file *os.File) (*uploadMediaResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	fmt.Println(strconv.FormatInt(fileInfo.Size(), 10))
 	additionalParam := map[string]string{
 		"command":     "INIT",
 		"media_type":  contentType,
