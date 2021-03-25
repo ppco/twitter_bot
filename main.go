@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
 )
@@ -8,13 +9,26 @@ import (
 func main() {
 	cred := getCreds()
 
-	//resp, err := tweetWithImage(cred, "gopher_ueda.png", "画像投稿")
-	resp, err := tweetWithMedia(cred, "mov_hts-samp001.mp4")
-	//resp, err := tweet(cred, "順番が重要だったのか")
+	tweetType := flag.String("tweettype", "2", "tweettype")
+	defaultMessage := flag.String("message", "猫\n#猫", "defaultMessage")
+	defaultImage := flag.String("image", "default_cats.jpeg", "defaultImage")
+	defaultMedia := flag.String("media", "default_cats.mp4", "defaultMedia")
+	flag.Parse()
+
+	var resp *http.Response
+	var err error
+	switch *tweetType {
+	case TweetTypeText:
+		resp, err = tweet(cred, *defaultMessage, nil)
+	case TweetTypeImg:
+		resp, err = tweetWithImage(cred, *defaultImage, *defaultMessage)
+	case TweetTypeMedia:
+		resp, err = tweetWithMedia(cred, *defaultMedia)
+	}
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("[ERROR] ツイッターボットでエラー発生：%v \n", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println(resp)
+		fmt.Printf("[WARN] ツイッターボットでHTTPステータスが200ではない HTTPSTATUS:%d", resp.StatusCode)
 	}
 }

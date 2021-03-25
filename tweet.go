@@ -27,7 +27,8 @@ type imageInfo struct {
 	Height    int    `json:"h"`
 }
 
-func tweetWithImage(creds *creds, fileStr, message string) (*http.Response, error) {
+// tweetWithImage 画像つきツイート
+func tweetWithImage(creds *creds, defaultImage, message string) (*http.Response, error) {
 	//boundaryBody作成
 	var body bytes.Buffer
 	mpWriter := multipart.NewWriter(&body)
@@ -44,7 +45,8 @@ func tweetWithImage(creds *creds, fileStr, message string) (*http.Response, erro
 		return nil, err
 	}
 	//値(BASE64の画像バイナリを値にする)
-	buffer, err := ioutil.ReadFile(fileStr)
+	//TODO: ここをAPI接続に変更する
+	buffer, err := ioutil.ReadFile(defaultImage)
 	if err != nil {
 		return nil, err
 	}
@@ -85,8 +87,13 @@ func tweetWithImage(creds *creds, fileStr, message string) (*http.Response, erro
 
 }
 
-func tweetWithMedia(creds *creds, fileStr string) (*http.Response, error) {
-	file, err := os.Open(fileStr)
+// tweetWithMedia 動画などのメディア付きツイート
+// 1.Init
+// 2.Append
+// 3.Finalize
+// の順に実行する
+func tweetWithMedia(creds *creds, defaultMedia string) (*http.Response, error) {
+	file, err := os.Open(defaultMedia)
 	if err != nil {
 		return nil, err
 	}
@@ -94,33 +101,29 @@ func tweetWithMedia(creds *creds, fileStr string) (*http.Response, error) {
 		file.Close()
 	}()
 
-	initRes, err := mediaInit(creds, file)
+	initRes, totalFileSize, err := mediaInit(creds, file)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := mediaAppend(creds, *initRes, file)
+	res, err := mediaAppend(creds, *initRes, totalFileSize, file)
 	if err != nil {
 		return nil, err
 	}
-
-	// res, err = mediaStatus(creds, *initRes)
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	res, err = mediaFinalize(creds, *initRes)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err = tweet(creds, "wa-i", []string{initRes.MediaIDString})
+	res, err = tweet(creds, "動画投稿テスト", []string{initRes.MediaIDString})
 	if err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
+// mediaStatus メディア付きツイートのステータス取得
 func mediaStatus(creds *creds, initRes uploadMediaResponse) (*http.Response, error) {
 	param := map[string]string{
 		"command":  "STATUS",
@@ -143,11 +146,10 @@ func mediaStatus(creds *creds, initRes uploadMediaResponse) (*http.Response, err
 		return nil, err
 	}
 	defer resp.Body.Close()
-	b, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(b))
 	return resp, nil
 }
 
+// mediaFinalize メディア付きツイートの終了処理
 func mediaFinalize(creds *creds, initRes uploadMediaResponse) (*http.Response, error) {
 	param := map[string]string{
 		"command":  "FINALIZE",
@@ -169,14 +171,15 @@ func mediaFinalize(creds *creds, initRes uploadMediaResponse) (*http.Response, e
 	if err != nil {
 		return nil, err
 	}
+
 	defer resp.Body.Close()
-	b, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(b))
 	return resp, nil
 }
 
-func mediaAppend(creds *creds, initRes uploadMediaResponse, file *os.File) (*http.Response, error) {
-	chunked := make([]byte, 3523218)
+// mediaAppend メディア付きツイートの追加処理
+func mediaAppend(creds *creds, initRes uploadMediaResponse, totalFileSize int64, file *os.File) (*http.Response, error) {
+	// TODO: チャンクにすると、「Segments do not add up to provided total file size.」が発生するため、現状一括でアップロードで対応
+	chunked := make([]byte, totalFileSize)
 	segmentIndex := 0
 	var res *http.Response
 	for {
@@ -245,14 +248,14 @@ func mediaAppend(creds *creds, initRes uploadMediaResponse, file *os.File) (*htt
 		if err != nil {
 			return res, err
 		}
-
 		defer res.Body.Close()
 		segmentIndex++
 	}
 	return res, nil
 }
 
-func mediaInit(creds *creds, file *os.File) (*uploadMediaResponse, error) {
+// mediaInit メディア付きツイートの初期化処理
+func mediaInit(creds *creds, file *os.File) (*uploadMediaResponse, int64, error) {
 	//fileからcontentTypeを読み取る
 	buffer := make([]byte, 512)
 	file.Read(buffer)
@@ -262,19 +265,20 @@ func mediaInit(creds *creds, file *os.File) (*uploadMediaResponse, error) {
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	fmt.Println(strconv.FormatInt(fileInfo.Size(), 10))
+	totalFileSize := fileInfo.Size()
+	fmt.Println(totalFileSize)
 	additionalParam := map[string]string{
 		"command":     "INIT",
 		"media_type":  contentType,
-		"total_bytes": strconv.FormatInt(fileInfo.Size(), 10),
+		"total_bytes": strconv.FormatInt(totalFileSize, 10),
 	}
 
 	authHeader := manualOauthSettings(creds, additionalParam, "POST", UPLOADMEDIA)
 	req, err := http.NewRequest("POST", UPLOADMEDIA, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	req.Header.Set("Authorization", authHeader)
@@ -283,18 +287,19 @@ func mediaInit(creds *creds, file *os.File) (*uploadMediaResponse, error) {
 	client := http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 
 	var res uploadMediaResponse
 	err = json.NewDecoder(resp.Body).Decode(&res)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return &res, nil
+	return &res, totalFileSize, nil
 }
 
+// tweet ツイート処理
 func tweet(creds *creds, message string, mediaIDs []string) (*http.Response, error) {
 	addtionalParam := map[string]string{"status": message}
 	if len(mediaIDs) != 0 {
