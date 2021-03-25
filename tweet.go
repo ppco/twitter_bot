@@ -28,7 +28,7 @@ type imageInfo struct {
 }
 
 // tweetWithImage 画像つきツイート
-func tweetWithImage(creds *creds, defaultImage, message string) (*http.Response, error) {
+func tweetWithImage(creds *creds, image, message string) (*http.Response, error) {
 	//boundaryBody作成
 	var body bytes.Buffer
 	mpWriter := multipart.NewWriter(&body)
@@ -46,7 +46,7 @@ func tweetWithImage(creds *creds, defaultImage, message string) (*http.Response,
 	}
 	//値(BASE64の画像バイナリを値にする)
 	//TODO: ここをAPI接続に変更する
-	buffer, err := ioutil.ReadFile(defaultImage)
+	buffer, err := ioutil.ReadFile(image)
 	if err != nil {
 		return nil, err
 	}
@@ -92,8 +92,8 @@ func tweetWithImage(creds *creds, defaultImage, message string) (*http.Response,
 // 2.Append
 // 3.Finalize
 // の順に実行する
-func tweetWithMedia(creds *creds, defaultMedia string) (*http.Response, error) {
-	file, err := os.Open(defaultMedia)
+func tweetWithMedia(creds *creds, message, media string) (*http.Response, error) {
+	file, err := os.Open(media)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func tweetWithMedia(creds *creds, defaultMedia string) (*http.Response, error) {
 		return nil, err
 	}
 
-	res, err = tweet(creds, "動画投稿テスト", []string{initRes.MediaIDString})
+	res, err = tweet(creds, message, []string{initRes.MediaIDString})
 	if err != nil {
 		return nil, err
 	}
