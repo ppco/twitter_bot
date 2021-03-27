@@ -10,9 +10,8 @@ func main() {
 	cred := getCreds()
 
 	tweetType := flag.String("tweettype", "2", "tweettype")
-	message := flag.String("message", "猫\n#猫", "defaultMessage")
-	image := flag.String("image", "default_cats.jpeg", "defaultImage")
-	media := flag.String("media", "default_cats.mp4", "defaultMedia")
+	message := flag.String("message", "", "defaultMessage")
+	media := flag.String("media", "default_animal.mp4", "defaultMedia")
 	flag.Parse()
 
 	var resp *http.Response
@@ -21,7 +20,7 @@ func main() {
 	case TweetTypeText:
 		resp, err = tweet(cred, *message, nil)
 	case TweetTypeImg:
-		resp, err = tweetWithImage(cred, *image, *message)
+		resp, err = tweetWithImage(cred, *message)
 	case TweetTypeMedia:
 		resp, err = tweetWithMedia(cred, *message, *media)
 	}

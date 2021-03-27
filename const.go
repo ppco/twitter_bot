@@ -11,4 +11,8 @@ const (
 	UPDATESTATUS string = "https://api.twitter.com/1.1/statuses/update.json"
 	//UPLOADMEDIA UPLOADMEDIA
 	UPLOADMEDIA string = "https://upload.twitter.com/1.1/media/upload.json"
+	// RANDOMCAT RANDOMCAT
+	RANDOMCAT string = "https://aws.random.cat/meow"
+	// RANDOMDOG RANDOMDOG
+	RANDOMDOG string = "https://random.dog/woof.json"
 )

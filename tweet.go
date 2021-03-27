@@ -5,13 +5,17 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"math/rand"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type uploadMediaResponse struct {
@@ -27,8 +31,67 @@ type imageInfo struct {
 	Height    int    `json:"h"`
 }
 
+type randomAnimalResponse struct {
+	CatURL string `json:"file"`
+	DogURL string `json:"url"`
+}
+
+func (r randomAnimalResponse) targetURL() string {
+	if r.CatURL == "" {
+		return r.DogURL
+	}
+	return r.CatURL
+}
+
 // tweetWithImage 画像つきツイート
-func tweetWithImage(creds *creds, image, message string) (*http.Response, error) {
+func tweetWithImage(creds *creds, message string) (*http.Response, error) {
+	targetURL := func() string {
+		rand.Seed(time.Now().UnixNano())
+		if rand.Intn(10)%2 == 0 {
+			return RANDOMCAT
+		}
+		return RANDOMDOG
+	}()
+
+	res, err := http.Get(targetURL)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	// API呼び出して画像URLを取得
+	var animalRes randomAnimalResponse
+	if err := json.NewDecoder(res.Body).Decode(&animalRes); err != nil {
+		return nil, err
+	}
+	// 再度画像URLをGETしてio.Readにする
+	res, err = http.Get(animalRes.targetURL())
+	if err != nil {
+		return nil, err
+	}
+
+	image := func() string {
+		// APIからの画像URLをローカルに保存
+		apiImage := "animal" + filepath.Ext(animalRes.targetURL())
+		file, err := os.Create(apiImage)
+		if err != nil {
+			// エラー発生時はデフォルトのファイル
+			fmt.Printf("[ERROR] os.Create is error:%v \n", err)
+			return "default_animal.jpeg"
+		}
+		defer file.Close()
+
+		io.Copy(file, res.Body)
+
+		return apiImage
+	}()
+
+	//値(BASE64の画像バイナリを値にする)
+	buffer, err := ioutil.ReadFile(image)
+	if err != nil {
+		return nil, err
+	}
+
 	//boundaryBody作成
 	var body bytes.Buffer
 	mpWriter := multipart.NewWriter(&body)
@@ -44,12 +107,7 @@ func tweetWithImage(creds *creds, image, message string) (*http.Response, error)
 	if err != nil {
 		return nil, err
 	}
-	//値(BASE64の画像バイナリを値にする)
-	//TODO: ここをAPI接続に変更する
-	buffer, err := ioutil.ReadFile(image)
-	if err != nil {
-		return nil, err
-	}
+
 	b64Buf := base64.StdEncoding.EncodeToString(buffer)
 	writer.Write([]byte(b64Buf))
 
@@ -72,19 +130,18 @@ func tweetWithImage(creds *creds, image, message string) (*http.Response, error)
 	}
 
 	defer resp.Body.Close()
-	var res uploadMediaResponse
-	err = json.NewDecoder(resp.Body).Decode(&res)
+	var mediaRes uploadMediaResponse
+	err = json.NewDecoder(resp.Body).Decode(&mediaRes)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err = tweet(creds, message, []string{res.MediaIDString})
+	resp, err = tweet(creds, message, []string{mediaRes.MediaIDString})
 	if err != nil {
 		return nil, err
 	}
 
 	return resp, nil
-
 }
 
 // tweetWithMedia 動画などのメディア付きツイート
