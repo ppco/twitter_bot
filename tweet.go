@@ -44,13 +44,14 @@ func (r randomAnimalResponse) targetURL() string {
 }
 
 // tweetWithImage 画像つきツイート
-func tweetWithImage(creds *creds, message string) (*http.Response, error) {
-	targetURL := func() string {
+func tweetWithImage(creds *creds) (*http.Response, error) {
+	targetURL, message := func() (string, string) {
 		rand.Seed(time.Now().UnixNano())
+		// ランダムに猫or犬を決定
 		if rand.Intn(10)%2 == 0 {
-			return RANDOMCAT
+			return RANDOMCAT, "#cat\n#cats\n#猫\n#ねこ"
 		}
-		return RANDOMDOG
+		return RANDOMDOG, "#dog\n#dogs\n#犬\n#いぬ\n"
 	}()
 
 	res, err := http.Get(targetURL)
@@ -77,11 +78,17 @@ func tweetWithImage(creds *creds, message string) (*http.Response, error) {
 		if err != nil {
 			// エラー発生時はデフォルトのファイル
 			fmt.Printf("[ERROR] os.Create is error:%v \n", err)
-			return "default_animal.jpeg"
+			message = ""
+			return "default_animal.gif"
 		}
 		defer file.Close()
 
-		io.Copy(file, res.Body)
+		if _, err := io.Copy(file, res.Body); err != nil {
+			// エラー発生時はデフォルトのファイル
+			fmt.Printf("[ERROR] os.Create is error:%v \n", err)
+			message = ""
+			return "default_animal.gif"
+		}
 
 		return apiImage
 	}()

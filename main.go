@@ -13,6 +13,7 @@ func main() {
 	message := flag.String("message", "", "defaultMessage")
 	media := flag.String("media", "default_animal.mp4", "defaultMedia")
 	flag.Parse()
+	fmt.Println("[INFO] tweetType:" + *tweetType)
 
 	var resp *http.Response
 	var err error
@@ -20,7 +21,7 @@ func main() {
 	case TweetTypeText:
 		resp, err = tweet(cred, *message, nil)
 	case TweetTypeImg:
-		resp, err = tweetWithImage(cred, *message)
+		resp, err = tweetWithImage(cred)
 	case TweetTypeMedia:
 		resp, err = tweetWithMedia(cred, *message, *media)
 	}
