@@ -71,27 +71,28 @@ func tweetWithImage(creds *creds) (*http.Response, error) {
 		return nil, err
 	}
 
-	image := func() string {
+	image, err := func() (string, error) {
 		// APIからの画像URLをローカルに保存
 		apiImage := "animal" + filepath.Ext(animalRes.targetURL())
 		file, err := os.Create(apiImage)
 		if err != nil {
 			// エラー発生時はデフォルトのファイル
 			fmt.Printf("[ERROR] os.Create is error:%v \n", err)
-			message = ""
-			return "default_animal.gif"
+			return "", err
 		}
 		defer file.Close()
 
 		if _, err := io.Copy(file, res.Body); err != nil {
 			// エラー発生時はデフォルトのファイル
-			fmt.Printf("[ERROR] os.Create is error:%v \n", err)
-			message = ""
-			return "default_animal.gif"
+			fmt.Printf("[ERROR] io.Copy is error:%v \n", err)
+			return "", err
 		}
 
-		return apiImage
+		return apiImage, nil
 	}()
+	if err != nil {
+		return nil, err
+	}
 
 	//値(BASE64の画像バイナリを値にする)
 	buffer, err := ioutil.ReadFile(image)
